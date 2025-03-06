@@ -49,7 +49,6 @@ def display_image(img, title="Image"):
         print('3')
         img = np.transpose(img, (1, 2, 0))  # Ensure channels-last format
 
-
     plt.imshow(img)
     plt.title(title)
     plt.show()

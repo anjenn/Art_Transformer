@@ -3,7 +3,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import PIL.Image as Image
 from tensorflow.keras.preprocessing import image as kp_image
-from tensorflow import keras
 from tensorflow.keras import layers
 
 import utils
@@ -30,18 +29,23 @@ def train_step(content_image, style_image, generated_image, content_weight, styl
 # Build the CNN model from scratch
 def build_model(input_shape=(224, 224, 3)):
     model = tf.keras.Sequential()
+
+    # For CNNs or complex models: Use model.add()
     
     # First few layers (Convolutional layers)
     model.add(layers.InputLayer(input_shape=input_shape))
+
+    model.add(layers.Conv2D(128, (3, 3), activation='relu', padding='same'))
+    model.add(layers.Conv2D(128, (3, 3), activation='relu', padding='same'))
+    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+
     model.add(layers.Conv2D(64, (3, 3), activation='relu', padding='same'))
     model.add(layers.Conv2D(64, (3, 3), activation='relu', padding='same'))
-    
     model.add(layers.MaxPooling2D(pool_size=(2, 2)))
 
     # Deeper layers
     model.add(layers.Conv2D(128, (3, 3), activation='relu', padding='same'))
     model.add(layers.Conv2D(128, (3, 3), activation='relu', padding='same'))
-    
     model.add(layers.MaxPooling2D(pool_size=(2, 2)))
 
     # Additional convolutional blocks as needed
@@ -68,16 +72,30 @@ def main():
     utils.display_image(content_image, "Content Image")
     utils.display_image(style_image, "Style Image")
 
-    # generated_image = tf.Variable(content_image)  # or use a random noise initialization
+    # # generated_image = tf.Variable(content_image)  # or use a random noise initialization
     generated_image = tf.Variable(tf.random.normal(content_image.shape, mean=0.5, stddev=0.1)) # Random noise initialization
 
 
-    # Example of training loop (simplified)
-    for epoch in range(10):  # Number of epochs
-        loss = train_step(content_image, style_image, generated_image, content_weight=1e3, style_weight=1e-2)
-        print(f"Epoch {epoch}, Loss: {loss}")
+    # # Example of training loop (simplified)
+    # for epoch in range(10):  # Number of epochs
+    #     loss = train_step(content_image, style_image, generated_image, content_weight=1e3, style_weight=1e-2)
+    #     print(f"Epoch {epoch}, Loss: {loss}")
 
-        if epoch % 2 == 0:  # Display every 2 epochs
-                utils.display_image(generated_image.numpy(), f"Generated Image at Epoch {epoch}")
+    #     if epoch % 2 == 0:  # Display every 2 epochs
+    #             utils.display_image(generated_image.numpy(), f"Generated Image at Epoch {epoch}")
+
+
+    datagen = kp_image.ImageDataGenerator(
+        rotation_range=40,
+        width_shift_range=0.2,
+        height_shift_range=0.2,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True,
+        fill_mode="nearest"
+    )
+    datagen.fit(training_images)
+
+
 
 main()
