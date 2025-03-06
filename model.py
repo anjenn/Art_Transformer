@@ -69,8 +69,6 @@ def main():
     utils.display_image(style_image, "Style Image")
 
     # generated_image = tf.Variable(content_image)  # or use a random noise initialization
-    
-    # Alternative:
     generated_image = tf.Variable(tf.random.normal(content_image.shape, mean=0.5, stddev=0.1)) # Random noise initialization
 
 
