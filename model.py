@@ -62,8 +62,8 @@ def extract_features(content_image, style_image):
 
 def main():
 
-    content_image = utils.load_img(CONTENT_PATH)
-    style_image = utils.load_img(STYLE_PATH)
+    content_image = utils.load_and_preprocess_img(CONTENT_PATH)
+    style_image = utils.load_and_preprocess_img(STYLE_PATH)
 
     utils.display_image(content_image, "Content Image")
     utils.display_image(style_image, "Style Image")
@@ -75,12 +75,12 @@ def main():
 
 
 
-    # Example of training loop (simplified)
-    for epoch in range(10):  # Number of epochs
-        loss = train_step(content_image, style_image, generated_image, content_weight=1e3, style_weight=1e-2)
-        print(f"Epoch {epoch}, Loss: {loss}")
+    # # Example of training loop (simplified)
+    # for epoch in range(10):  # Number of epochs
+    #     loss = train_step(content_image, style_image, generated_image, content_weight=1e3, style_weight=1e-2)
+    #     print(f"Epoch {epoch}, Loss: {loss}")
 
-        if epoch % 2 == 0:  # Display every 2 epochs
-                utils.display_image(generated_image.numpy(), f"Generated Image at Epoch {epoch}")
+    #     if epoch % 2 == 0:  # Display every 2 epochs
+    #             utils.display_image(generated_image.numpy(), f"Generated Image at Epoch {epoch}")
 
 main()
