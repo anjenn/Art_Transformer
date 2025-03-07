@@ -49,15 +49,28 @@ def display_image(img, title="Image"):
         print('3')
         img = np.transpose(img, (1, 2, 0))  # Ensure channels-last format
 
-
     plt.imshow(img)
     plt.title(title)
     plt.show()
 
 def content_loss(content, generated):
+    # Ensure both are tensors
+    if isinstance(content, tuple):
+        content = content[0]  # Extract first element
+    if isinstance(generated, tuple):
+        generated = generated[0]  # Extract first element
+    
     return tf.reduce_mean(tf.square(content - generated))
 
 def gram_matrix(input_tensor):
+    # Ensure input_tensor is a valid tensor
+    if isinstance(input_tensor, float):
+        raise TypeError("Expected input_tensor to be a tensor, but received float.")
+    
+    # Convert to tensor if not already a tensor
+    input_tensor = tf.convert_to_tensor(input_tensor)
+
+    # Calculate the gram matrix
     channels = int(input_tensor.shape[-1])
     a = tf.reshape(input_tensor, [-1, channels])
     gram = tf.matmul(a, a, transpose_a=True)
