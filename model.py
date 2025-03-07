@@ -3,8 +3,9 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 import PIL.Image as Image
+from tensorflow.keras.applications import VGG19
 from tensorflow.keras.preprocessing import image as kp_image
-from tensorflow.keras import layers, mixed_precision
+from tensorflow.keras import models, layers, mixed_precision
 
 import utils
 
@@ -16,107 +17,60 @@ STYLE_DIR = "./style"
 print("Checking Content Directory:", os.listdir(CONTENT_DIR))
 print("Checking Style Directory:", os.listdir(STYLE_DIR))
 
-def train_step(content_batch, style_batch, generated_image, content_weight, style_weight, optimizer):
+def load_vgg19(input_shape=(224, 224, 3)):
+    vgg = VGG19(include_top=False, weights='imagenet', input_shape=input_shape)
+    
+    # Specify layers for content and style extraction
+    content_layers = ['block4_conv2']  # Layer used for content representation
+    style_layers = ['block1_conv1', 'block2_conv1', 'block3_conv1', 'block4_conv1']  # Layers for style representation
+    
+    # Create the model for extracting the content and style features
+    content_model = models.Model(inputs=vgg.input, outputs=[vgg.get_layer(layer).output for layer in content_layers])
+    style_model = models.Model(inputs=vgg.input, outputs=[vgg.get_layer(layer).output for layer in style_layers])
+
+    return content_model, style_model
+
+def train_step(content_batch, style_batch, generated_image, content_weight, style_weight, optimizer, content_model, style_model):
+    content_features, style_features = extract_features(content_batch, style_batch, content_model, style_model)
+    generated_features, generated_features_ = extract_features(generated_image, generated_image, content_model, style_model)
+    content_features, style_features, generated_features = utils.resize_features(content_features, style_features, generated_features)
+
+    height, width, channels = 224, 224, 3  # example image shape (height, width, channels)
+    batch_size = tf.shape(content_batch)[0]  # Use the batch size from the actual batch
+    initial_value = tf.random.normal([batch_size, height, width, channels], mean=0.5, stddev=1.0)
+    generated_image = tf.Variable(initial_value, trainable=True)
+    
     with tf.GradientTape() as tape:
-        # Step 1: Extract features from content and style images
-        content_features, style_features = extract_features(content_batch, style_batch)
-        # generated_features = model(generated_image) # For a single image
-        generated_features = extract_features(generated_image, generated_image)
-
-        # Step 2: Ensure features are tensors (just in case)
-        content_features = tf.convert_to_tensor(content_features) if not isinstance(content_features, tf.Tensor) else content_features
-        style_features = tf.convert_to_tensor(style_features) if not isinstance(style_features, tf.Tensor) else style_features
-        generated_features = tf.convert_to_tensor(generated_features) if not isinstance(generated_features, tf.Tensor) else generated_features
-
-        # Cost = content + style loss
+        tape.watch(generated_image)  # Explicitly watch generated_image
         loss = utils.compute_loss(content_weight, style_weight, content_features, style_features, generated_features)
 
     gradients = tape.gradient(loss, generated_image)
-    if tf.reduce_any(tf.math.is_nan(gradients)):
-        print("NaN gradients detected!")
 
-    optimizer.apply_gradients([(gradients, generated_image)])
- 
-    # optimizer.apply_gradients([(gradients, generated_image)])
-
-    return loss
-
-# Build the CNN model from scratch
-def build_model(input_shape=(224, 224, 3)):
-    model = tf.keras.Sequential()
-
-    # For CNNs or complex models: Use model.add()
-    
-    # First few layers (Convolutional layers)
-    model.add(layers.InputLayer(input_shape=input_shape))
-
-    model.add(layers.Conv2D(32, (3, 3), activation='leaky_relu', padding='same'))
-    model.add(layers.Conv2D(32, (3, 3), activation='leaky_relu', padding='same'))
-    model.add(layers.BatchNormalization())
-    model.add(layers.MaxPooling2D(pool_size=(4, 4)))
-
-    model.add(layers.Conv2D(64, (3, 3), activation='leaky_relu', padding='same'))
-    model.add(layers.Conv2D(64, (3, 3), activation='leaky_relu', padding='same'))
-    model.add(layers.BatchNormalization())
-    model.add(layers.MaxPooling2D(pool_size=(4, 4)))
-
-    # Deeper layers
-    model.add(layers.Conv2D(128, (3, 3), activation='leaky_relu', padding='same'))
-    model.add(layers.Conv2D(128, (3, 3), activation='leaky_relu', padding='same'))
-    model.add(layers.BatchNormalization())
-    model.add(layers.MaxPooling2D(pool_size=(4, 4)))
-
-    # Additional convolutional blocks as needed
-    model.add(layers.Conv2D(256, (3, 3), activation='relu', padding='same'))
-    model.add(layers.BatchNormalization())
-    
-    return model
-
-# Create the model
-model = build_model()
-# Adam optimizer to optimize the generated image
-# optimizer = tf.optimizers.Adam(learning_rate=0.005)
+    if gradients is not None:
+        if tf.reduce_any(tf.math.is_nan(gradients)):
+                print("NaN gradients detected")
+        else:
+            # Apply gradients to model's trainable variables
+            optimizer.apply_gradients(zip(gradients, [generated_image]))
+            return loss
+    else:
+        print("Gradients are None")
 
 # Function to extract features from the model
-def extract_features(content_image, style_image):
-    content_features = model(content_image)
-    style_features = model(style_image)
+def extract_features(content_image, style_image, content_model, style_model):
+    # Get content features using VGG19
+    content_features = content_model(content_image)
+    
+    # Get style features using VGG19
+    style_features = style_model(style_image)
     
     return content_features, style_features
 
 
 def main():
     optimizer = tf.optimizers.Adam(learning_rate=0.001, clipvalue=1.0) # !Should be reinitialised at every step to handle new var when dealing with many data
+    content_model, style_model = load_vgg19()
 
-    # ########################################
-    # # # Single Training Image case
-    # ########################################
-    # # Initial Image Display
-    # content_image = utils.load_and_preprocess_img('./style/style_class/style_01.png') # Testing blur
-    # style_image = utils.load_and_preprocess_img(STYLE_IMG)
-
-    # utils.display_image(content_image, "Content Image")
-    # utils.display_image(style_image, "Style Image")
-
-    # # # generated_image = tf.Variable(content_image)  # or use a random noise initialization
-    # generated_image = tf.Variable(tf.random.normal(content_image.shape, mean=0.5, stddev=0.1)) # Random noise initialization
-
-    # # Example of training loop (simplified)
-    # for epoch in range(10):  # Number of epochs
-    #     loss = train_step(content_image, style_image, generated_image, content_weight=1e3, style_weight=1e-2)
-    #     print(f"Epoch {epoch}, Loss: {loss}")
-
-    #     if epoch % 2 == 0:  # Display every 2 epochs
-    #             utils.display_image(generated_image.numpy(), f"Generated Image at Epoch {epoch}")
-    # ########################################
-
-    # ########################################
-    # # Multiple Training Images case
-    # ########################################
-    # # Image Augmentation (datagen below)
-    # The ImageDataGenerator with augmentation transforms the images randomly during training to create variations, helping the model generalize better.
-    # Data augmentation is optional. The model can train and run without it. However, adding it can improve generalization, especially if the dataset is small.
-    
     content_datagen = kp_image.ImageDataGenerator(
         rescale=1./255,             # Normalize pixel values
         rotation_range=40,          # Randomly rotates images by up to 40 degrees
@@ -137,9 +91,6 @@ def main():
         horizontal_flip=True,
         fill_mode="nearest"
     )
-    # datagen.fit(training_images) is only required when using flow() on numpy arrays (e.g., flow(X_train, y_train, batch_size=32)).
-    # flow_from_directory() directly loads and processes images from disk, applying augmentation on the fly.
-
     content_generator = content_datagen.flow_from_directory(CONTENT_DIR,
                                                         target_size=(224, 224),
                                                         batch_size=2,
@@ -179,7 +130,9 @@ def main():
                 style_generator.reset()
                 style_batch = next(style_generator)
 
-            loss = train_step(content_batch, style_batch, generated_image, content_weight=1e3, style_weight=1e-2, optimizer=optimizer)
+            loss = train_step(content_batch, style_batch, generated_image,
+                              content_weight=1e3, style_weight=1e-2, optimizer=optimizer,
+                              content_model=content_model, style_model=style_model)
 
             print(f"Epoch {epoch}, Step {step}, Loss: {loss}")
             

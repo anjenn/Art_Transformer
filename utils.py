@@ -76,15 +76,6 @@ def display_image(img, title="Image"):
     else:
         print("Invalid image shape, cannot display.")
 
-def content_loss(content, generated):
-    # Ensure both are tensors
-    if isinstance(content, tuple):
-        content = content[0]  # Extract first element
-    if isinstance(generated, tuple):
-        generated = generated[0]  # Extract first element
-    
-    return tf.reduce_mean(tf.square(content - generated))
-
 def gram_matrix(input_tensor):
     # Ensure input_tensor is a valid tensor
     if len(input_tensor.shape) < 3:
@@ -99,35 +90,94 @@ def gram_matrix(input_tensor):
     gram /= tf.cast(tf.size(input_tensor), tf.float32)
     return gram
 
-def style_loss(style, generated):
-    style = tf.convert_to_tensor(style) if not isinstance(style, tf.Tensor) else style
-    generated = tf.convert_to_tensor(generated) if not isinstance(generated, tf.Tensor) else generated
+def style_loss(style_features, generated_features):
+    style_features = tf.convert_to_tensor(style_features) if not isinstance(style_features, tf.Tensor) else style_features
+    generated_features = tf.convert_to_tensor(generated_features) if not isinstance(generated_features, tf.Tensor) else generated_features
 
-    # # Single Image case
-    # style_gram = gram_matrix(style)
-    # generated_gram = gram_matrix(generated)
-    # return tf.reduce_mean(tf.square(style_gram - generated_gram))
-
-    # Calculate the Gram matrix for each style image in the batch
-    style_grams = [gram_matrix(s) for s in style]
-    generated_grams = [gram_matrix(generated) for _ in style]
-
-    # Compute the style loss for each style image
-    losses = [tf.reduce_mean(tf.square(style_gram - generated_gram)) 
-              for style_gram, generated_gram in zip(style_grams, generated_grams)]
+    loss = 0
+    for style, generated in zip(style_features, generated_features):
+        style_gram = gram_matrix(style)
+        generated_gram = gram_matrix(generated)
+        # print(f"style_gram: {style_gram}")
+        # print(f"generated_gram: {generated_gram}")
+        loss += tf.reduce_mean(tf.square(style_gram - generated_gram))  # MSE between gram matrices
     
-    return tf.reduce_mean(losses)
+    print(f"Style Loss: {loss}")
+    return loss
 
+def content_loss(content_features, generated_features):
+    # For each pair of content and generated features, calculate MSE
+    loss = 0
+    for content, generated in zip(content_features, generated_features):
+        # print(f"content: {content}")
+        # print(f"generated: {generated}")
+        loss += tf.reduce_mean(tf.square(content - generated))  # MSE between features
+        
+    print(f"Content Loss: {loss}")
+    return loss
 
 def compute_loss(content_weight, style_weight, content_features, style_features, generated_features):
-    # Calculate the content loss
-    
+    content_loss_value = 0
+    style_loss_value = 0
+
     content_loss_value = content_loss(content_features, generated_features)
-    
-    # Calculate the style loss
+
     style_loss_value = style_loss(style_features, generated_features)
-    
-    # Combine the content and style losses using their weights
+
+    # Total Loss
+    # print(content_weight, content_loss_value, style_weight, style_loss_value)
     total_loss = content_weight * content_loss_value + style_weight * style_loss_value
-    
     return total_loss
+
+
+def resize_features(content_features, style_features, generated_features):
+    # Get the shape of the generated features (height, width)
+    # target_height, target_width = generated_features[0].shape[1], generated_features[0].shape[2]
+    target_height, target_width = 224, 224
+    
+    # # Resize content features to match the target size
+    # resized_content_features = [tf.image.resize(content, (target_height, target_width)) for content in content_features]
+    # resized_content_features = tf.expand_dims(resized_content_features, axis=0)
+
+    # # Resize generated features in the same way
+    # resized_generated_features = [tf.image.resize(generated, (target_height, target_width)) for generated in generated_features] #target height target width
+    # resized_generated_features = tf.expand_dims(resized_generated_features, axis=0)
+
+    resized_style_features = []
+    resized_content_features = []
+    resized_generated_features = []
+
+    for style in style_features:
+        # Resize spatial dimensions (height, width) to match the generated features
+        resized_style = tf.image.resize(style, (target_height, target_width))
+        
+        # Adjust the depth by applying a 1x1 convolution if necessary
+        if resized_style.shape[-1] != 3:
+            resized_style = tf.keras.layers.Conv2D(3, (1, 1), padding="same")(resized_style)
+        
+        resized_style_features.append(resized_style)
+
+    for content in content_features:
+        # Resize spatial dimensions (height, width) to match the generated features
+        resized_content = tf.image.resize(content, (target_height, target_width))
+        
+        # Adjust the depth by applying a 1x1 convolution if necessary
+        if resized_content.shape[-1] != 3:
+            resized_content = tf.expand_dims(resized_content, axis=0)  # Add batch dimension
+
+            resized_content = tf.keras.layers.Conv2D(3, (1, 1), padding="same")(resized_content)
+        
+        resized_content_features.append(resized_content)
+
+    for generated in generated_features:
+        # Resize spatial dimensions (height, width) to match the generated features
+        resized_generated = tf.image.resize(generated, (target_height, target_width))
+        
+        # Adjust the depth by applying a 1x1 convolution if necessary
+        if resized_generated.shape[-1] != 3:
+            resized_generated = tf.expand_dims(resized_generated, axis=0)  # Add batch dimension
+            resized_generated = tf.keras.layers.Conv2D(3, (1, 1), padding="same")(resized_generated)
+        
+        resized_generated_features.append(resized_generated)
+    
+    return resized_content_features, resized_style_features, resized_generated_features
