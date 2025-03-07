@@ -52,19 +52,23 @@ def build_model(input_shape=(224, 224, 3)):
 
     model.add(layers.Conv2D(32, (3, 3), activation='leaky_relu', padding='same'))
     model.add(layers.Conv2D(32, (3, 3), activation='leaky_relu', padding='same'))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(layers.BatchNormalization())
+    model.add(layers.MaxPooling2D(pool_size=(4, 4)))
 
     model.add(layers.Conv2D(64, (3, 3), activation='leaky_relu', padding='same'))
-    model.add(layers.Conv2D(64, (3, 3), activation='v', padding='same'))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(layers.Conv2D(64, (3, 3), activation='leaky_relu', padding='same'))
+    model.add(layers.BatchNormalization())
+    model.add(layers.MaxPooling2D(pool_size=(4, 4)))
 
     # Deeper layers
     model.add(layers.Conv2D(128, (3, 3), activation='leaky_relu', padding='same'))
     model.add(layers.Conv2D(128, (3, 3), activation='leaky_relu', padding='same'))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(layers.BatchNormalization())
+    model.add(layers.MaxPooling2D(pool_size=(4, 4)))
 
     # Additional convolutional blocks as needed
     model.add(layers.Conv2D(256, (3, 3), activation='relu', padding='same'))
+    model.add(layers.BatchNormalization())
     
     return model
 
@@ -82,13 +86,13 @@ def extract_features(content_image, style_image):
 
 
 def main():
-    optimizer = tf.optimizers.Adam(learning_rate=0.2, clipvalue=1.0) # !Should be reinitialised at every step to handle new var when dealing with many data
+    optimizer = tf.optimizers.Adam(learning_rate=0.001, clipvalue=1.0) # !Should be reinitialised at every step to handle new var when dealing with many data
 
     # ########################################
     # # # Single Training Image case
     # ########################################
     # # Initial Image Display
-    # content_image = utils.load_and_preprocess_img(CONTENT_IMG)
+    # content_image = utils.load_and_preprocess_img('./style/style_class/style_01.png') # Testing blur
     # style_image = utils.load_and_preprocess_img(STYLE_IMG)
 
     # utils.display_image(content_image, "Content Image")
@@ -179,14 +183,14 @@ def main():
 
             print(f"Epoch {epoch}, Step {step}, Loss: {loss}")
             
-            if step == 100:
-                utils.display_image(generated_image.numpy(), f"Generated Image at epoch: {epoch}, step: {200}")
-
-            if step == 500:
-                utils.display_image(generated_image.numpy(), f"Generated Image at epoch: {epoch}, step: {200}")
-
             if step == 1000:
-                utils.display_image(generated_image.numpy(), f"Generated Image at epoch: {epoch}, step: {200}")
+                utils.display_image(generated_image.numpy(), f"Generated Image at epoch: {epoch}, step: {step}")
+
+            if step == 1500:
+                utils.display_image(generated_image.numpy(), f"Generated Image at epoch: {epoch}, step: {step}")
+
+            if step == 2000:
+                utils.display_image(generated_image.numpy(), f"Generated Image at epoch: {epoch}, step: {step}")
         print(f"End of Epoch {epoch}, Final Loss: {loss}")
 
             # Display generated image (optional)

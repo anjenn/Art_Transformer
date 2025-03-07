@@ -17,7 +17,7 @@ def load_and_preprocess_img(img_path):
     
     img = Image.open(img_path)
     print(f"Image mode before conversion: {img.mode}")
-    img = img.filter(ImageFilter.GaussianBlur(radius=5))  # Apply Gaussian Blur with radius 2
+    img = img.filter(ImageFilter.GaussianBlur(radius=3))  # Apply Gaussian Blur with radius 2
 
 
     img = img.convert("RGBA")  # Ensure it is RGBA before processing
