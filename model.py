@@ -6,6 +6,7 @@ import PIL.Image as Image
 from tensorflow.keras.applications import VGG19
 from tensorflow.keras.preprocessing import image as kp_image
 from tensorflow.keras import models, layers, mixed_precision
+from tensorflow.keras.applications.vgg19 import preprocess_input
 
 import utils
 
@@ -30,31 +31,55 @@ def load_vgg19(input_shape=(224, 224, 3)):
 
     return content_model, style_model
 
+def display_image(image, title="Generated Image"):
+    if image.ndim == 4:
+        image = image[0]  # Selecting the first image in the batch
+
+    plt.figure(figsize=(8, 8))
+    plt.imshow(image)
+    plt.title(title)
+    plt.axis('off')
+    plt.show()
+
+
 def train_step(content_batch, style_batch, generated_image, content_weight, style_weight, optimizer, content_model, style_model):
     content_features, style_features = extract_features(content_batch, style_batch, content_model, style_model)
-    generated_features, generated_features_ = extract_features(generated_image, generated_image, content_model, style_model)
-    content_features, style_features, generated_features = utils.resize_features(content_features, style_features, generated_features)
-
-    height, width, channels = 224, 224, 3  # example image shape (height, width, channels)
-    batch_size = tf.shape(content_batch)[0]  # Use the batch size from the actual batch
-    initial_value = tf.random.normal([batch_size, height, width, channels], mean=0.5, stddev=1.0)
-    generated_image = tf.Variable(initial_value, trainable=True)
+    generated_content_features, generated_style_features = extract_features(generated_image, generated_image, content_model, style_model)
     
+    # RESIZING
+    content_features = utils.resize_features(content_features)
+    style_features = utils.resize_style_features(style_features)
+    generated_content_features = utils.resize_features(generated_content_features)
+    generated_style_features = utils.resize_style_features(generated_style_features)
+
     with tf.GradientTape() as tape:
         tape.watch(generated_image)  # Explicitly watch generated_image
-        loss = utils.compute_loss(content_weight, style_weight, content_features, style_features, generated_features)
+        loss = utils.compute_loss(content_weight, style_weight, content_features, style_features, [generated_content_features, generated_style_features])
+        print(f'LOSS in train: {loss}')
 
     gradients = tape.gradient(loss, generated_image)
+    print(generated_image.trainable)  # Should print True
+
+    
+    print(gradients)
+
+    # display_image(generated_image.numpy())
+
 
     if gradients is not None:
+        print("Gradients shape:", gradients.shape)
+        print("Gradients values:", gradients.numpy())
         if tf.reduce_any(tf.math.is_nan(gradients)):
-                print("NaN gradients detected")
+            print("NaN gradients detected!")
+            # Optionally, log or handle the NaN case.
+            return loss  # Could return early to avoid applying invalid gradients
         else:
-            # Apply gradients to model's trainable variables
+            # If the gradients are fine, apply them
             optimizer.apply_gradients(zip(gradients, [generated_image]))
             return loss
     else:
         print("Gradients are None")
+        return loss  # Optionally return the loss even if no gradients are calculated
 
 # Function to extract features from the model
 def extract_features(content_image, style_image, content_model, style_model):
@@ -68,7 +93,7 @@ def extract_features(content_image, style_image, content_model, style_model):
 
 
 def main():
-    optimizer = tf.optimizers.Adam(learning_rate=0.001, clipvalue=1.0) # !Should be reinitialised at every step to handle new var when dealing with many data
+    optimizer = tf.optimizers.Adam(learning_rate=0.0001, clipvalue=1.0) # !Should be reinitialised at every step to handle new var when dealing with many data
     content_model, style_model = load_vgg19()
 
     content_datagen = kp_image.ImageDataGenerator(
@@ -103,7 +128,14 @@ def main():
 
     # Initialize the generated image once before training loop
     content_batch = next(content_generator)  # Get a batch of content images to determine shape
-    generated_image = tf.Variable(tf.random.normal(content_batch.shape, mean=0.5, stddev=0.1))  # Random noise initialization
+    content_batch = preprocess_input(content_batch * 255.0)  # Undo rescale=1./255
+    style_batch = next(style_generator)
+    style_batch = preprocess_input(style_batch * 255.0)
+
+    generated_image = tf.Variable(preprocess_input(tf.random.uniform(content_batch.shape, minval=0, maxval=255)), trainable=True)
+    print("Content batch range:", content_batch.min(), content_batch.max())
+    print("Style batch range:", style_batch.min(), style_batch.max())
+    print("Generated image range:", generated_image.numpy().min(), generated_image.numpy().max())
 
     # Ensure we have the correct number of steps per epoch
     steps_per_epoch = max(len(content_generator), len(style_generator))
@@ -116,34 +148,14 @@ def main():
         for step, (content_batch, style_batch) in enumerate(zip(content_generator, style_generator)):
             # Assuming content_batch and style_batch are numpy arrays with shape (batch_size, 224, 224, 3)
 
-            # Compute loss and update generated image
-
-            try:
-                content_batch = next(content_generator)
-            except StopIteration:
-                content_generator.reset()
-                content_batch = next(content_generator)
-
-            try:
-                style_batch = next(style_generator)
-            except StopIteration:
-                style_generator.reset()
-                style_batch = next(style_generator)
-
             loss = train_step(content_batch, style_batch, generated_image,
                               content_weight=1e3, style_weight=1e-2, optimizer=optimizer,
                               content_model=content_model, style_model=style_model)
 
             print(f"Epoch {epoch}, Step {step}, Loss: {loss}")
             
-            if step == 1000:
-                utils.display_image(generated_image.numpy(), f"Generated Image at epoch: {epoch}, step: {step}")
-
-            if step == 1500:
-                utils.display_image(generated_image.numpy(), f"Generated Image at epoch: {epoch}, step: {step}")
-
-            if step == 2000:
-                utils.display_image(generated_image.numpy(), f"Generated Image at epoch: {epoch}, step: {step}")
+            if step == 1000 or step == 1500 or step == 2000:
+                utils.display_image(generated_image.numpy(), f"Generated Image at epoch {epoch}, step {step}")
         print(f"End of Epoch {epoch}, Final Loss: {loss}")
 
             # Display generated image (optional)
