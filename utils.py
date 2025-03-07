@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 import PIL.Image as Image
+from PIL import ImageFilter
 
 # Function to load and process the images
 def load_img_normally(img_path):
@@ -16,6 +17,8 @@ def load_and_preprocess_img(img_path):
     
     img = Image.open(img_path)
     print(f"Image mode before conversion: {img.mode}")
+    img = img.filter(ImageFilter.GaussianBlur(radius=5))  # Apply Gaussian Blur with radius 2
+
 
     img = img.convert("RGBA")  # Ensure it is RGBA before processing
     img = img.convert('RGB')  # Remove the alpha channel

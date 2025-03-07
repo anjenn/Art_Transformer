@@ -50,17 +50,17 @@ def build_model(input_shape=(224, 224, 3)):
     # First few layers (Convolutional layers)
     model.add(layers.InputLayer(input_shape=input_shape))
 
-    # model.add(layers.Conv2D(128, (3, 3), activation='relu', padding='same'))
-    # model.add(layers.Conv2D(128, (3, 3), activation='relu', padding='same'))
-    # model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(layers.Conv2D(32, (3, 3), activation='leaky_relu', padding='same'))
+    model.add(layers.Conv2D(32, (3, 3), activation='leaky_relu', padding='same'))
+    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
 
-    model.add(layers.Conv2D(64, (3, 3), activation='relu', padding='same'))
-    model.add(layers.Conv2D(64, (3, 3), activation='relu', padding='same'))
+    model.add(layers.Conv2D(64, (3, 3), activation='leaky_relu', padding='same'))
+    model.add(layers.Conv2D(64, (3, 3), activation='v', padding='same'))
     model.add(layers.MaxPooling2D(pool_size=(2, 2)))
 
     # Deeper layers
-    model.add(layers.Conv2D(128, (3, 3), activation='relu', padding='same'))
-    model.add(layers.Conv2D(128, (3, 3), activation='relu', padding='same'))
+    model.add(layers.Conv2D(128, (3, 3), activation='leaky_relu', padding='same'))
+    model.add(layers.Conv2D(128, (3, 3), activation='leaky_relu', padding='same'))
     model.add(layers.MaxPooling2D(pool_size=(2, 2)))
 
     # Additional convolutional blocks as needed
@@ -71,7 +71,7 @@ def build_model(input_shape=(224, 224, 3)):
 # Create the model
 model = build_model()
 # Adam optimizer to optimize the generated image
-# optimizer = tf.optimizers.Adam(learning_rate=0.02)
+# optimizer = tf.optimizers.Adam(learning_rate=0.005)
 
 # Function to extract features from the model
 def extract_features(content_image, style_image):
@@ -178,10 +178,15 @@ def main():
             loss = train_step(content_batch, style_batch, generated_image, content_weight=1e3, style_weight=1e-2, optimizer=optimizer)
 
             print(f"Epoch {epoch}, Step {step}, Loss: {loss}")
+            
+            if step == 100:
+                utils.display_image(generated_image.numpy(), f"Generated Image at epoch: {epoch}, step: {200}")
 
-            if step == 200:
-                utils.display_image(generated_image.numpy(), f"Generated Image at step {150}")
+            if step == 500:
+                utils.display_image(generated_image.numpy(), f"Generated Image at epoch: {epoch}, step: {200}")
 
+            if step == 1000:
+                utils.display_image(generated_image.numpy(), f"Generated Image at epoch: {epoch}, step: {200}")
         print(f"End of Epoch {epoch}, Final Loss: {loss}")
 
             # Display generated image (optional)
