@@ -123,7 +123,7 @@ def compute_loss(content_weight, style_weight, content_features, style_features,
     # Total Loss
     # print(content_weight, content_loss_value, style_weight, style_loss_value)
     total_loss = content_weight * content_loss_value + style_weight * style_loss_value
-    return total_loss
+    return tf.reduce_sum(total_loss)
 
 def resize_style_features(features):
     TARGET_HEIGHT, TARGET_WIDTH = 224, 224
@@ -157,3 +157,6 @@ def resize_features(features):
         resized_features.append(resized_feature)
 
     return resized_features
+
+def global_average_pooling(features):
+    return tf.reduce_mean(features, axis=[1, 2])  # Global Average Pooling along height and width
