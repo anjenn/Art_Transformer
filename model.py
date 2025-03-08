@@ -61,7 +61,7 @@ def train_step(content_batch, style_batch, generated_image, content_weight, styl
     #     print("Watched variable: ", var)
 
     if gradients is not None:
-        print("Gradients shape:", gradients.shape)
+        # print("Gradients shape:", gradients.shape)
         # print("Gradients values:", gradients.numpy())
         if tf.reduce_any(tf.math.is_nan(gradients)):
             print("NaN gradients detected!")
@@ -77,10 +77,10 @@ def train_step(content_batch, style_batch, generated_image, content_weight, styl
 
 def main():
     scheduler = tf.keras.optimizers.schedules.ExponentialDecay(
-        initial_learning_rate=0.1,
-        decay_steps=10000,
-        decay_rate=0.9,
-        staircase=True)
+        initial_learning_rate=1e-3,
+        decay_steps=5000,
+        decay_rate=0.95,
+        staircase=True) # Every 5,000 steps learning rate multiplies by 0.95
     
     optimizer = tf.optimizers.Adam(learning_rate=scheduler, clipvalue=1.0) # !Should be reinitialised at every step to handle new var when dealing with many data
     content_model, style_model = load_vgg19()
@@ -125,7 +125,9 @@ def main():
 
     # generated_image = tf.Variable(preprocess_input(tf.random.uniform(content_batch.shape, minval=0, maxval=255)), trainable=True)
     # Using the code below, for lower loss at the beginning (starting with less noise)
-    preprocessed_image = preprocess_input(content_batch * 0.5 + style_batch * 0.5)
+    noise = tf.random.uniform(shape=content_batch.shape, minval=-0.1, maxval=0.1)
+
+    preprocessed_image = preprocess_input(content_batch * 0.5 + style_batch * 0.5 + noise)
     generated_image = tf.Variable(preprocessed_image, trainable=True)
 
     # for content in content_batch:
@@ -143,7 +145,7 @@ def main():
     print(f"Steps per epoch: {steps_per_epoch}")
 
     # Example of training loop (simplified)
-    for epoch in range(5000): # Increase the number of epochs for better training
+    for epoch in range(70000): # Increase the number of epochs for better training
         print(f"Starting Epoch {epoch}")  # This helps confirm that we enter a new epoch.
     
         for step in range(steps_per_epoch):
@@ -151,15 +153,15 @@ def main():
             # Assuming content_batch and style_batch are numpy arrays with shape (batch_size, 224, 224, 3)
 
             loss = train_step(content_batch, style_batch, generated_image,
-                              content_weight=1e3, style_weight=1e-2, optimizer=optimizer,
+                              content_weight=1e2, style_weight=1e-1, optimizer=optimizer,
                               content_model=content_model, style_model=style_model)
 
             print(f"Epoch {epoch}, Step {step}, Loss: {loss}")
             
-        # print(f"End of Epoch {epoch}, Final Loss: {loss}")
+        print(f"End of Epoch {epoch}, Final Loss: {loss}")
 
             # Display generated image (optional)
-        if epoch % 500 == 0:
+        if epoch % 15000 == 0:
             utils.display_image(generated_image.numpy(), f"Generated Image at Epoch {epoch}")
 
 
