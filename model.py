@@ -76,7 +76,13 @@ def train_step(content_batch, style_batch, generated_image, content_weight, styl
 
 
 def main():
-    optimizer = tf.optimizers.Adam(learning_rate=0.05, clipvalue=1.0) # !Should be reinitialised at every step to handle new var when dealing with many data
+    scheduler = tf.keras.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate=0.1,
+        decay_steps=10000,
+        decay_rate=0.9,
+        staircase=True)
+    
+    optimizer = tf.optimizers.Adam(learning_rate=scheduler, clipvalue=1.0) # !Should be reinitialised at every step to handle new var when dealing with many data
     content_model, style_model = load_vgg19()
 
     content_datagen = kp_image.ImageDataGenerator(
@@ -102,12 +108,14 @@ def main():
     content_generator = content_datagen.flow_from_directory(CONTENT_DIR,
                                                         target_size=(224, 224),
                                                         batch_size=2,
-                                                        class_mode=None)  # No labels for style transfer
+                                                        class_mode=None,  # No labels for style transfer
+                                                        shuffle=False)  # Don't shuffle so we can track the content/style pairing
 
     style_generator = style_datagen.flow_from_directory(STYLE_DIR,
                                                         target_size=(224, 224),
                                                         batch_size=2,
-                                                        class_mode=None)
+                                                        class_mode=None,
+                                                        shuffle=False)
 
     # Initialize the generated image once before training loop
     content_batch = next(content_generator)  # Get a batch of content images to determine shape
@@ -116,33 +124,42 @@ def main():
     style_batch = preprocess_input(style_batch * 255.0)
 
     # generated_image = tf.Variable(preprocess_input(tf.random.uniform(content_batch.shape, minval=0, maxval=255)), trainable=True)
-    generated_image = tf.Variable(preprocess_input(tf.Variable(content_batch * 0.5 + style_batch * 0.5), trainable=True))
+    # Using the code below, for lower loss at the beginning (starting with less noise)
+    preprocessed_image = preprocess_input(content_batch * 0.5 + style_batch * 0.5)
+    generated_image = tf.Variable(preprocessed_image, trainable=True)
 
     # for content in content_batch:
     #     display_image(content)
 
-    steps_per_epoch = max(len(content_generator), len(style_generator))
+    content_images_count = len(content_generator)  # The number of content images
+    style_images_count = len(style_generator)      # The number of style images
+    content_batch_size = content_generator.batch_size
+    style_batch_size = style_generator.batch_size
+    steps_per_epoch_content = content_images_count // content_batch_size
+    steps_per_epoch_style = style_images_count // style_batch_size
+
+    steps_per_epoch = max(steps_per_epoch_content, steps_per_epoch_style)
+
     print(f"Steps per epoch: {steps_per_epoch}")
 
     # Example of training loop (simplified)
-    for epoch in range(30): # Increase the number of epochs for better training
+    for epoch in range(5000): # Increase the number of epochs for better training
         print(f"Starting Epoch {epoch}")  # This helps confirm that we enter a new epoch.
-
-        for step, (content_batch, style_batch) in enumerate(zip(content_generator, style_generator)):
+    
+        for step in range(steps_per_epoch):
+        # for step, (content_batch, style_batch) in enumerate(zip(content_generator, style_generator)):
             # Assuming content_batch and style_batch are numpy arrays with shape (batch_size, 224, 224, 3)
 
             loss = train_step(content_batch, style_batch, generated_image,
-                              content_weight=1e4, style_weight=1e-1, optimizer=optimizer,
+                              content_weight=1e3, style_weight=1e-2, optimizer=optimizer,
                               content_model=content_model, style_model=style_model)
 
             print(f"Epoch {epoch}, Step {step}, Loss: {loss}")
             
-            if step == 1000 or step == 1500 or step == 2000:
-                utils.display_image(generated_image.numpy(), f"Generated Image at epoch {epoch}, step {step}")
         # print(f"End of Epoch {epoch}, Final Loss: {loss}")
 
             # Display generated image (optional)
-        if epoch % 5 == 0:
+        if epoch % 500 == 0:
             utils.display_image(generated_image.numpy(), f"Generated Image at Epoch {epoch}")
 
 
