@@ -19,7 +19,6 @@ def load_and_preprocess_img(img_path):
     print(f"Image mode before conversion: {img.mode}")
     img = img.filter(ImageFilter.GaussianBlur(radius=3))  # Apply Gaussian Blur with radius 2
 
-
     img = img.convert("RGBA")  # Ensure it is RGBA before processing
     img = img.convert('RGB')  # Remove the alpha channel
 
@@ -76,18 +75,37 @@ def display_image(img, title="Image"):
     else:
         print("Invalid image shape, cannot display.")
 
+
 def gram_matrix(input_tensor):
     # Ensure input_tensor is a valid tensor
-    if len(input_tensor.shape) < 3:
-        raise ValueError(f"Expected input tensor to have at least 3 dimensions, but got shape {input_tensor.shape}")
     if not isinstance(input_tensor, tf.Tensor):
         input_tensor = tf.convert_to_tensor(input_tensor)
 
-    # Calculate the gram matrix
-    channels = int(input_tensor.shape.as_list()[-1])
+    # # Check the shape of the tensor
+    # if len(input_tensor.shape) < 3:
+    #     raise ValueError(f"Expected input tensor to have at least 3 dimensions, but got shape {input_tensor.shape}")
+
+    # Handle the case where the input is 1D (possibly from global average pooling)
+    if len(input_tensor.shape) == 1:  # If it's a 1D tensor, we need to reshape it
+        input_tensor = tf.reshape(input_tensor, [1, 1, 1, -1])  # Reshape it to (batch_size, 1, 1, channels)
+
+    # If global pooling has been applied, the shape will be (batch_size, 1, 1, channels)
+    # Reshape to ensure we have a (batch_size, channels) shape
+    if len(input_tensor.shape) == 4 and input_tensor.shape[1] == 1 and input_tensor.shape[2] == 1:
+        input_tensor = tf.reshape(input_tensor, [input_tensor.shape[0], input_tensor.shape[-1]])
+
+    # Get the number of channels
+    channels = input_tensor.shape[-1]
+
+    # Reshape the tensor to a 2D matrix (batch_size, channels)
     a = tf.reshape(input_tensor, [-1, channels])
-    gram = tf.linalg.matmul(a, a, transpose_a=True)  # Use reshaped 'a' for the matrix multiplication
+
+    # Compute the Gram matrix
+    gram = tf.linalg.matmul(a, a, transpose_a=True)
+
+    # Normalize the Gram matrix
     gram /= tf.cast(tf.size(input_tensor), tf.float32)
+
     return gram
 
 def style_loss(style_features, generated_features):
@@ -114,11 +132,16 @@ def content_loss(content_features, generated_features):
     return loss
 
 def compute_loss(content_weight, style_weight, content_features, style_features, generated_features):
-    [generated_content_features, generated_style_features] = generated_features
+    # content_loss_value = content_loss(content_features, generated_features[0])
+    # style_loss_value = style_loss(style_features, generated_features[1])
 
-    content_loss_value = content_loss(content_features, generated_content_features)
-
-    style_loss_value = style_loss(style_features, generated_style_features)
+    content_loss_value = content_loss(global_average_pooling(content_features), global_average_pooling(generated_features[0]))
+    
+    # Apply GAP to style features and generated style features, compute style loss for each style layer
+    style_loss_value = 0.0
+    for style, generated_style in zip(style_features, generated_features[1]):
+        style_loss_value += style_loss(global_average_pooling(style), global_average_pooling(generated_style))
+    
 
     # Total Loss
     # print(content_weight, content_loss_value, style_weight, style_loss_value)
@@ -159,4 +182,5 @@ def resize_features(features):
     return resized_features
 
 def global_average_pooling(features):
+
     return tf.reduce_mean(features, axis=[1, 2])  # Global Average Pooling along height and width

@@ -47,16 +47,20 @@ def display_image(image, title="Generated Image"):
     plt.show()
 
 def train_step(content_batch, style_batch, generated_image, content_weight, style_weight, optimizer, content_model, style_model):
-    content_features, style_features = extract_features(content_batch, style_batch, content_model, style_model)
-    generated_content_features, generated_style_features = extract_features(generated_image, generated_image, content_model, style_model)
-    
-    # RESIZING
-    content_features = utils.resize_features(content_features)
-    style_features = utils.resize_style_features(style_features)
-    generated_content_features = utils.resize_features(generated_content_features)
-    generated_style_features = utils.resize_style_features(generated_style_features)
+
+
+    # # RESIZING
+    # content_features = utils.resize_features(content_features)
+    # style_features = utils.resize_style_features(style_features)
+    # generated_content_features = utils.resize_features(generated_content_features)
+    # generated_style_features = utils.resize_style_features(generated_style_features)
 
     with tf.GradientTape(persistent=True) as tape:
+        content_features = content_model(content_batch)
+        style_features = style_model(style_batch)
+        generated_content_features = content_model(generated_image)
+        generated_style_features = style_model(generated_image)
+        
         tape.watch(generated_image)  # Explicitly watch generated_image
         loss = utils.compute_loss(content_weight, style_weight, content_features, style_features, [generated_content_features, generated_style_features])
         print(f'LOSS in train: {loss}')
@@ -65,9 +69,11 @@ def train_step(content_batch, style_batch, generated_image, content_weight, styl
     # for var in tape.watched_variables():
     #     print("Watched variable: ", var)
 
+    # print("Gradients shape:", gradients.shape)
+
     if gradients is not None:
         print("Gradients shape:", gradients.shape)
-        print("Gradients values:", gradients.numpy())
+        # print("Gradients values:", gradients.numpy())
         if tf.reduce_any(tf.math.is_nan(gradients)):
             print("NaN gradients detected!")
             # Optionally, log or handle the NaN case.
@@ -79,15 +85,6 @@ def train_step(content_batch, style_batch, generated_image, content_weight, styl
     else:
         print("Gradients are None")
         return loss  # Optionally return the loss even if no gradients are calculated
-
-# Function to extract features from the model
-def extract_features(content_image, style_image, content_model, style_model):
-    # Get content features using VGG19
-    content_features = content_model(content_image)
-    # Get style features using VGG19
-    style_features = style_model(style_image)
-    
-    return content_features, style_features
 
 
 def main():
@@ -132,8 +129,9 @@ def main():
 
     generated_image = tf.Variable(preprocess_input(tf.random.uniform(content_batch.shape, minval=0, maxval=255)), trainable=True)
 
-    for content in content_batch:
-        display_image(content)
+    # for content in content_batch:
+    #     display_image(content)
+
     # Ensure we have the correct number of steps per epoch
     steps_per_epoch = max(len(content_generator), len(style_generator))
     print(f"Steps per epoch: {steps_per_epoch}")
