@@ -153,15 +153,6 @@ def main():
     preprocessed_image = preprocess_input(content_batch * 0.5 + style_batch * 0.5 + noise)
     generated_image = tf.Variable(preprocessed_image, trainable=True)
 
-    # Define checkpoint callback to save model weights
-    checkpoint_callback = ModelCheckpoint(
-        filepath='style_transfer_model_checkpoint.weights.h5',  # Save model to this path
-        save_weights_only=True,  # Save only the weights
-        save_best_only=True,  # Save the model with the best performance (e.g., lowest loss)
-        monitor='loss',  # Monitor loss or other metrics
-        mode='min',  # Save when loss is minimized
-        verbose=1  # Print status
-    )
     checkpoint = tf.train.Checkpoint(optimizer=optimizer)
 
     # for content in content_batch:
@@ -182,6 +173,7 @@ def main():
         print("Loading model weights...")
         load_model_weights(style_model, 'style_transfer_model_checkpoint.weights.h5')
 
+    best_loss = float('inf')
     for epoch in range(70000): # Increase the number of epochs for better training
         print(f"Starting Epoch {epoch}")  # This helps confirm that we enter a new epoch.
     
@@ -195,16 +187,18 @@ def main():
 
             print(f"Epoch {epoch}, Step {step}, Loss: {loss}")
 
+        # Manually implementing ModelCheckpoint for weights saving
+        if loss < best_loss:
+            best_loss = loss
+            style_model.save_weights('style_transfer_model_checkpoint.weights.h5')  # Save the best weights
+
         if epoch % 500 == 0:
             # Optionally save the optimizer state at checkpoints
-            optimizer.save('optimizer_checkpoint.ckpt')
+            checkpoint.save('optimizer_checkpoint.ckpt')
             utils.display_image(generated_image.numpy(), f"Generated Image at Epoch {epoch}")
             save_generated_images(epoch, generated_image)
 
         # print(f"End of Epoch {epoch}, Final Loss: {loss}")
-        style_model.save_weights('style_transfer_model_checkpoint.weights.h5')
-        checkpoint_callback.on_epoch_end(epoch, logs={'loss': loss}) # Save model weights at the end of each epoch
-
     checkpoint.save('optimizer_checkpoint.ckpt')
 
 
