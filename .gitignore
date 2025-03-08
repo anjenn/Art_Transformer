@@ -1,4 +1,5 @@
 /content
 /style
 /venv
-*.png
+# *.png
+note.txt
