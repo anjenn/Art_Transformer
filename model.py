@@ -3,8 +3,10 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 import PIL.Image as Image
+from tensorflow.keras.applications import VGG19
 from tensorflow.keras.preprocessing import image as kp_image
-from tensorflow.keras import layers
+from tensorflow.keras import models, layers, mixed_precision
+from tensorflow.keras.applications.vgg19 import preprocess_input
 
 import utils
 
@@ -16,101 +18,82 @@ STYLE_DIR = "./style"
 print("Checking Content Directory:", os.listdir(CONTENT_DIR))
 print("Checking Style Directory:", os.listdir(STYLE_DIR))
 
-def train_step(content_image, style_image, generated_image, content_weight, style_weight):
-    optimizer = tf.optimizers.Adam(learning_rate=0.02) # !Should be reinitialised at every step to handle new var when dealing with many data
+def load_vgg19(input_shape=(224, 224, 3)):
+    vgg = VGG19(include_top=False, weights='imagenet', input_shape=input_shape)
+    
+    # Specify layers for content and style extraction
+    content_layers = ['block4_conv2']  # Layer used for content representation
+    style_layers = ['block1_conv1', 'block2_conv1', 'block3_conv1', 'block4_conv1']  # Layers for style representation
+    
+    # Create the model for extracting the content and style features
+    content_model = models.Model(inputs=vgg.input, outputs=[vgg.get_layer(layer).output for layer in content_layers])
+    style_model = models.Model(inputs=vgg.input, outputs=[vgg.get_layer(layer).output for layer in style_layers])
+    for layer in content_model.layers:
+        if layer.weights:
+            print(layer.name, "Has Weights")
+        else:
+            print(layer.name, "No Weights")
 
-    with tf.GradientTape() as tape:
-        # Extract features for content and style images
-        content_features, style_features = extract_features(content_image, style_image)
-        # generated_features = model(generated_image) # For a single image
-        generated_features = extract_features(generated_image, generated_image)
+    return content_model, style_model
 
-        print('DEBUGGING!!!!!!!!!!!!!!!!!!')
-        print(type(style_features))  
-        print(type(content_features))  
-        # style_features = tf.convert_to_tensor(style_features)
-        # style_gram = utils.gram_matrix(style_features)
-        # style_features = tf.reduce_mean(style_features)
+def display_image(image, title="Generated Image"):
+    if image.ndim == 4:
+        image = image[0]  # Selecting the first image in the batch
 
-        # Cost = content + style loss
-        # loss = utils.compute_loss(content_weight, style_weight, content_features, style_features, generated_features) # For a single image
+    plt.figure(figsize=(8, 8))
+    plt.imshow(image)
+    plt.title(title)
+    plt.axis('off')
+    plt.show()
 
-        loss = utils.compute_loss(content_features, style_features, generated_features, content_weight, style_weight)
+def train_step(content_batch, style_batch, generated_image, content_weight, style_weight, optimizer, content_model, style_model):
+    content_features, style_features = extract_features(content_batch, style_batch, content_model, style_model)
+    generated_content_features, generated_style_features = extract_features(generated_image, generated_image, content_model, style_model)
+    
+    # RESIZING
+    content_features = utils.resize_features(content_features)
+    style_features = utils.resize_style_features(style_features)
+    generated_content_features = utils.resize_features(generated_content_features)
+    generated_style_features = utils.resize_style_features(generated_style_features)
+
+    with tf.GradientTape(persistent=True) as tape:
+        tape.watch(generated_image)  # Explicitly watch generated_image
+        loss = utils.compute_loss(content_weight, style_weight, content_features, style_features, [generated_content_features, generated_style_features])
+        print(f'LOSS in train: {loss}')
 
     gradients = tape.gradient(loss, generated_image)
-    optimizer.apply_gradients([(gradients, generated_image)])
+    # for var in tape.watched_variables():
+    #     print("Watched variable: ", var)
 
-    return loss
-
-# Build the CNN model from scratch
-def build_model(input_shape=(224, 224, 3)):
-    model = tf.keras.Sequential()
-
-    # For CNNs or complex models: Use model.add()
-    
-    # First few layers (Convolutional layers)
-    model.add(layers.InputLayer(input_shape=input_shape))
-
-    model.add(layers.Conv2D(128, (3, 3), activation='relu', padding='same'))
-    model.add(layers.Conv2D(128, (3, 3), activation='relu', padding='same'))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-
-    model.add(layers.Conv2D(64, (3, 3), activation='relu', padding='same'))
-    model.add(layers.Conv2D(64, (3, 3), activation='relu', padding='same'))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-
-    # Deeper layers
-    model.add(layers.Conv2D(128, (3, 3), activation='relu', padding='same'))
-    model.add(layers.Conv2D(128, (3, 3), activation='relu', padding='same'))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-
-    # Additional convolutional blocks as needed
-    model.add(layers.Conv2D(256, (3, 3), activation='relu', padding='same'))
-    
-    return model
-
-# Create the model
-model = build_model()
-# Adam optimizer to optimize the generated image
-# optimizer = tf.optimizers.Adam(learning_rate=0.02)
+    if gradients is not None:
+        print("Gradients shape:", gradients.shape)
+        print("Gradients values:", gradients.numpy())
+        if tf.reduce_any(tf.math.is_nan(gradients)):
+            print("NaN gradients detected!")
+            # Optionally, log or handle the NaN case.
+            return loss  # Could return early to avoid applying invalid gradients
+        else:
+            # If the gradients are fine, apply them
+            optimizer.apply_gradients(zip(gradients, [generated_image]))
+            return loss
+    else:
+        print("Gradients are None")
+        return loss  # Optionally return the loss even if no gradients are calculated
 
 # Function to extract features from the model
-def extract_features(content_image, style_image):
-    content_features = model(content_image)
-    style_features = model(style_image)
+def extract_features(content_image, style_image, content_model, style_model):
+    # Get content features using VGG19
+    content_features = content_model(content_image)
+    # Get style features using VGG19
+    style_features = style_model(style_image)
     
     return content_features, style_features
 
 
 def main():
-    # ########################################
-    # # # Single Training Image case
-    # ########################################
-    # # Initial Image Display
-    # content_image = utils.load_and_preprocess_img(CONTENT_IMG)
-    # style_image = utils.load_and_preprocess_img(STYLE_IMG)
+    optimizer = tf.optimizers.Adam(learning_rate=0.05, clipvalue=1.0) # !Should be reinitialised at every step to handle new var when dealing with many data
+    content_model, style_model = load_vgg19()
 
-    # utils.display_image(content_image, "Content Image")
-    # utils.display_image(style_image, "Style Image")
-
-    # # # generated_image = tf.Variable(content_image)  # or use a random noise initialization
-    # generated_image = tf.Variable(tf.random.normal(content_image.shape, mean=0.5, stddev=0.1)) # Random noise initialization
-
-    # # Example of training loop (simplified)
-    # for epoch in range(10):  # Number of epochs
-    #     loss = train_step(content_image, style_image, generated_image, content_weight=1e3, style_weight=1e-2)
-    #     print(f"Epoch {epoch}, Loss: {loss}")
-
-    #     if epoch % 2 == 0:  # Display every 2 epochs
-    #             utils.display_image(generated_image.numpy(), f"Generated Image at Epoch {epoch}")
-    # ########################################
-
-    # ########################################
-    # # Multiple Training Images case
-    # ########################################
-    # # Image Augmentation (datagen below)
-    # The ImageDataGenerator with augmentation transforms the images randomly during training to create variations, helping the model generalize better.
-    # Data augmentation is optional. The model can train and run without it. However, adding it can improve generalization, especially if the dataset is small.
     content_datagen = kp_image.ImageDataGenerator(
         rescale=1./255,             # Normalize pixel values
         rotation_range=40,          # Randomly rotates images by up to 40 degrees
@@ -131,34 +114,50 @@ def main():
         horizontal_flip=True,
         fill_mode="nearest"
     )
-    # datagen.fit(training_images) is only required when using flow() on numpy arrays (e.g., flow(X_train, y_train, batch_size=32)).
-    # flow_from_directory() directly loads and processes images from disk, applying augmentation on the fly.
-
     content_generator = content_datagen.flow_from_directory(CONTENT_DIR,
                                                         target_size=(224, 224),
-                                                        batch_size=32,
+                                                        batch_size=2,
                                                         class_mode=None)  # No labels for style transfer
 
     style_generator = style_datagen.flow_from_directory(STYLE_DIR,
                                                         target_size=(224, 224),
-                                                        batch_size=32,
+                                                        batch_size=2,
                                                         class_mode=None)
 
+    # Initialize the generated image once before training loop
+    content_batch = next(content_generator)  # Get a batch of content images to determine shape
+    content_batch = preprocess_input(content_batch * 255.0)  # Undo rescale=1./255
+    style_batch = next(style_generator)
+    style_batch = preprocess_input(style_batch * 255.0)
+
+    generated_image = tf.Variable(preprocess_input(tf.random.uniform(content_batch.shape, minval=0, maxval=255)), trainable=True)
+
+    for content in content_batch:
+        display_image(content)
+    # Ensure we have the correct number of steps per epoch
+    steps_per_epoch = max(len(content_generator), len(style_generator))
+    print(f"Steps per epoch: {steps_per_epoch}")
+
     # Example of training loop (simplified)
-    for epoch in range(100): # Increase the number of epochs for better training
+    for epoch in range(7): # Increase the number of epochs for better training
+        print(f"Starting Epoch {epoch}")  # This helps confirm that we enter a new epoch.
 
-        for content_batch, style_batch in zip(content_generator, style_generator):
+        for step, (content_batch, style_batch) in enumerate(zip(content_generator, style_generator)):
             # Assuming content_batch and style_batch are numpy arrays with shape (batch_size, 224, 224, 3)
-            # Initialize generated_image with random noise for each batch
-            generated_image = tf.Variable(tf.random.normal(content_batch.shape, mean=0.5, stddev=0.1))
 
-            # Compute loss and update generated image
-            loss = train_step(content_batch, style_batch, generated_image, content_weight=1e3, style_weight=1e-2)
-            print(f"Epoch {epoch}, Loss: {loss}")
+            loss = train_step(content_batch, style_batch, generated_image,
+                              content_weight=1e3, style_weight=1e-2, optimizer=optimizer,
+                              content_model=content_model, style_model=style_model)
+
+            # print(f"Epoch {epoch}, Step {step}, Loss: {loss}")
+            
+            if step == 1000 or step == 1500 or step == 2000:
+                utils.display_image(generated_image.numpy(), f"Generated Image at epoch {epoch}, step {step}")
+        # print(f"End of Epoch {epoch}, Final Loss: {loss}")
 
             # Display generated image (optional)
-            if epoch % 5 == 0:
-                utils.display_image(generated_image.numpy(), f"Generated Image at Epoch {epoch}")
+        if epoch % 5 == 0:
+            utils.display_image(generated_image.numpy(), f"Generated Image at Epoch {epoch}")
 
 
 main()
