@@ -27,7 +27,6 @@ def load_and_preprocess_img(img_path):
     img_array = np.array(img)
 
     img_array = np.array(img) / 255.0  # Normalize the image to [0, 1]
-    # print(f"Image array after normalization: {img_array[0, 0]}")  # Show the first pixel value (R, G, B)
 
     img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension (1, 224, 224, 3)
 
@@ -40,17 +39,13 @@ def display_image(img, title="Image"):
 
     if img.ndim == 4:  # This means it's a batch of images (batch_size, height, width, channels)
         for i in range(img.shape[0]):  # Loop over the batch
-            single_img = img[i]
+            single_img = img[i] # Process each image in the batch
 
-            # Process each image in the batch
-            if single_img.shape[-1] == 4:
-                single_img = single_img[..., :3]  # Drop alpha channel if present
+            if single_img.shape[-1] == 4: single_img = single_img[..., :3]  # Drop alpha channel if present
 
-            if single_img.dtype != np.uint8:
-                single_img = np.clip(single_img * 255, 0, 255).astype(np.uint8)  # Ensure 0-255 range
+            if single_img.dtype != np.uint8: single_img = np.clip(single_img * 255, 0, 255).astype(np.uint8)  # Ensure 0-255 range
 
-            if single_img.shape[0] == 3 and single_img.shape[-1] != 3:
-                single_img = np.transpose(single_img, (1, 2, 0))  # Ensure channels-last format
+            if single_img.shape[0] == 3 and single_img.shape[-1] != 3: single_img = np.transpose(single_img, (1, 2, 0))  # Ensure channels-last format
 
             # Display each image from the batch
             plt.imshow(single_img)
@@ -59,14 +54,11 @@ def display_image(img, title="Image"):
 
     elif img.ndim == 3:  # This means it's a single image (height, width, channels)
         # Process a single image
-        if img.shape[-1] == 4:
-            img = img[..., :3]  # Drop alpha channel if present
+        if img.shape[-1] == 4: img = img[..., :3]  # Drop alpha channel if present
 
-        if img.dtype != np.uint8:
-            img = np.clip(img * 255, 0, 255).astype(np.uint8)  # Ensure 0-255 range
+        if img.dtype != np.uint8: img = np.clip(img * 255, 0, 255).astype(np.uint8)  # Ensure 0-255 range
 
-        if img.shape[0] == 3 and img.shape[-1] != 3:
-            img = np.transpose(img, (1, 2, 0))  # Ensure channels-last format
+        if img.shape[0] == 3 and img.shape[-1] != 3: img = np.transpose(img, (1, 2, 0))  # Ensure channels-last format
 
         # Display the single image
         plt.imshow(img)
@@ -81,7 +73,6 @@ def gram_matrix(input_tensor):
     if not isinstance(input_tensor, tf.Tensor):
         input_tensor = tf.convert_to_tensor(input_tensor)
 
-    # # Check the shape of the tensor
     # if len(input_tensor.shape) < 3:
     #     raise ValueError(f"Expected input tensor to have at least 3 dimensions, but got shape {input_tensor.shape}")
 
@@ -94,17 +85,10 @@ def gram_matrix(input_tensor):
     if len(input_tensor.shape) == 4 and input_tensor.shape[1] == 1 and input_tensor.shape[2] == 1:
         input_tensor = tf.reshape(input_tensor, [input_tensor.shape[0], input_tensor.shape[-1]])
 
-    # Get the number of channels
-    channels = input_tensor.shape[-1]
-
-    # Reshape the tensor to a 2D matrix (batch_size, channels)
-    a = tf.reshape(input_tensor, [-1, channels])
-
-    # Compute the Gram matrix
-    gram = tf.linalg.matmul(a, a, transpose_a=True)
-
-    # Normalize the Gram matrix
-    gram /= tf.cast(tf.size(input_tensor), tf.float32)
+    channels = input_tensor.shape[-1] # Get the number of channels
+    a = tf.reshape(input_tensor, [-1, channels]) # Reshape the tensor to a 2D matrix (batch_size, channels)
+    gram = tf.linalg.matmul(a, a, transpose_a=True) # Compute the Gram matrix
+    gram /= tf.cast(tf.size(input_tensor), tf.float32) # Normalize the Gram matrix
 
     return gram
 
@@ -118,7 +102,7 @@ def style_loss(style_features, generated_features):
         generated_gram = gram_matrix(generated)
         loss += tf.reduce_mean(tf.square(style_gram - generated_gram))  # MSE between gram matrices
     
-    print(f"Style Loss: {loss}")
+    # print(f"Style Loss: {loss}")
     return loss
 
 def content_loss(content_features, generated_features):
@@ -128,58 +112,21 @@ def content_loss(content_features, generated_features):
     for content, generated in zip(content_features, generated_features):
         loss += tf.reduce_mean(tf.square(content - generated))  # MSE between features
         
-    print(f"Content Loss: {loss}")
+    # print(f"Content Loss: {loss}")
     return loss
 
 def compute_loss(content_weight, style_weight, content_features, style_features, generated_features):
-    # content_loss_value = content_loss(content_features, generated_features[0])
-    # style_loss_value = style_loss(style_features, generated_features[1])
+    # Apply GAP to style features and generated style features, compute style loss for each style layer
 
     content_loss_value = content_loss(global_average_pooling(content_features), global_average_pooling(generated_features[0]))
     
-    # Apply GAP to style features and generated style features, compute style loss for each style layer
     style_loss_value = 0.0
     for style, generated_style in zip(style_features, generated_features[1]):
         style_loss_value += style_loss(global_average_pooling(style), global_average_pooling(generated_style))
     
-
     # Total Loss
-    # print(content_weight, content_loss_value, style_weight, style_loss_value)
     total_loss = content_weight * content_loss_value + style_weight * style_loss_value
     return tf.reduce_sum(total_loss)
-
-def resize_style_features(features):
-    TARGET_HEIGHT, TARGET_WIDTH = 224, 224
-    
-    resized_style_features = []
-
-    for style in features:
-        resized_style = tf.image.resize(style, (TARGET_HEIGHT, TARGET_WIDTH))
-        
-        if resized_style.shape[-1] != 3:
-            resized_style = tf.keras.layers.Conv2D(3, (1, 1), padding="same")(resized_style)
-        
-        resized_style_features.append(resized_style)
-
-    return resized_style_features
-
-def resize_features(features):
-    TARGET_HEIGHT, TARGET_WIDTH = 224, 224
-    
-    resized_features = []
-
-    for feature in features:
-        # Resize spatial dimensions (height, width) to match the generated features
-        resized_feature = tf.image.resize(feature, (TARGET_HEIGHT, TARGET_WIDTH))
-        
-        # Adjust the depth by applying a 1x1 convolution if necessary
-        if resized_feature.shape[-1] != 3:
-            resized_feature = tf.expand_dims(resized_feature, axis=0)  # Add batch dimension
-            resized_feature = tf.keras.layers.Conv2D(3, (1, 1), padding="same")(resized_feature)
-        
-        resized_features.append(resized_feature)
-
-    return resized_features
 
 def global_average_pooling(features):
 

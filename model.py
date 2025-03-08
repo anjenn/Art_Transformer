@@ -28,11 +28,11 @@ def load_vgg19(input_shape=(224, 224, 3)):
     # Create the model for extracting the content and style features
     content_model = models.Model(inputs=vgg.input, outputs=[vgg.get_layer(layer).output for layer in content_layers])
     style_model = models.Model(inputs=vgg.input, outputs=[vgg.get_layer(layer).output for layer in style_layers])
-    for layer in content_model.layers:
-        if layer.weights:
-            print(layer.name, "Has Weights")
-        else:
-            print(layer.name, "No Weights")
+    # for layer in content_model.layers:
+    #     if layer.weights:
+    #         print(layer.name, "Has Weights")
+    #     else:
+    #         print(layer.name, "No Weights")
 
     return content_model, style_model
 
@@ -47,14 +47,6 @@ def display_image(image, title="Generated Image"):
     plt.show()
 
 def train_step(content_batch, style_batch, generated_image, content_weight, style_weight, optimizer, content_model, style_model):
-
-
-    # # RESIZING
-    # content_features = utils.resize_features(content_features)
-    # style_features = utils.resize_style_features(style_features)
-    # generated_content_features = utils.resize_features(generated_content_features)
-    # generated_style_features = utils.resize_style_features(generated_style_features)
-
     with tf.GradientTape(persistent=True) as tape:
         content_features = content_model(content_batch)
         style_features = style_model(style_batch)
@@ -63,20 +55,16 @@ def train_step(content_batch, style_batch, generated_image, content_weight, styl
         
         tape.watch(generated_image)  # Explicitly watch generated_image
         loss = utils.compute_loss(content_weight, style_weight, content_features, style_features, [generated_content_features, generated_style_features])
-        print(f'LOSS in train: {loss}')
 
     gradients = tape.gradient(loss, generated_image)
-    # for var in tape.watched_variables():
+    # for var in tape.watched_variables(): # For debugging
     #     print("Watched variable: ", var)
-
-    # print("Gradients shape:", gradients.shape)
 
     if gradients is not None:
         print("Gradients shape:", gradients.shape)
         # print("Gradients values:", gradients.numpy())
         if tf.reduce_any(tf.math.is_nan(gradients)):
             print("NaN gradients detected!")
-            # Optionally, log or handle the NaN case.
             return loss  # Could return early to avoid applying invalid gradients
         else:
             # If the gradients are fine, apply them
@@ -132,12 +120,11 @@ def main():
     # for content in content_batch:
     #     display_image(content)
 
-    # Ensure we have the correct number of steps per epoch
     steps_per_epoch = max(len(content_generator), len(style_generator))
     print(f"Steps per epoch: {steps_per_epoch}")
 
     # Example of training loop (simplified)
-    for epoch in range(7): # Increase the number of epochs for better training
+    for epoch in range(30): # Increase the number of epochs for better training
         print(f"Starting Epoch {epoch}")  # This helps confirm that we enter a new epoch.
 
         for step, (content_batch, style_batch) in enumerate(zip(content_generator, style_generator)):
@@ -147,7 +134,7 @@ def main():
                               content_weight=1e3, style_weight=1e-2, optimizer=optimizer,
                               content_model=content_model, style_model=style_model)
 
-            # print(f"Epoch {epoch}, Step {step}, Loss: {loss}")
+            print(f"Epoch {epoch}, Step {step}, Loss: {loss}")
             
             if step == 1000 or step == 1500 or step == 2000:
                 utils.display_image(generated_image.numpy(), f"Generated Image at epoch {epoch}, step {step}")
